@@ -11,7 +11,7 @@ export const tokoSeed: Toko[] = [
     nib: "91200049281",
     keterangan: "Aktif sejak 1998",
     pemilik: "Pak Bambang Irawan",
-    whatsapp: "+62 812-3341-9081",
+    whatsapp: "6281233419081",
     lokasiGang: "Gg. IX No. 12",
     wilayah: "Jl. MT Haryono Gg. IX (Sentra Pembakaran Putar)",
     alamat: "Jl. MT Haryono Gg. IX No. 42B, Dinoyo, Lowokwaru",
@@ -36,7 +36,7 @@ export const tokoSeed: Toko[] = [
     nib: "91200088192",
     keterangan: "Aktif sejak 1985",
     pemilik: "H. Suwandi Santoso",
-    whatsapp: "+62 851-0982-1209",
+    whatsapp: "6285109821209",
     lokasiGang: "Gg. IX No. 44",
     wilayah: "Jl. MT Haryono Gg. IX (Sentra Pembakaran Putar)",
     alamat: "Jl. MT Haryono Gg. IX No. 44, Dinoyo, Lowokwaru",
@@ -61,7 +61,7 @@ export const tokoSeed: Toko[] = [
     nib: "91200033100",
     keterangan: "Spesialis Teknik Putar",
     pemilik: "Ibu Sri Hartatik",
-    whatsapp: "+62 878-9011-4322",
+    whatsapp: "6287890114322",
     lokasiGang: "Gg. X No. 05",
     wilayah: "Gg. X (Gerabah Alami & Tungku)",
     alamat: "Gg. X No. 05, Dinoyo, Lowokwaru",
@@ -85,7 +85,7 @@ export const tokoSeed: Toko[] = [
     nib: "91200071221",
     keterangan: "Berkas Legalitas Diajukan: 12 Jan 2025",
     pemilik: "Danang Tri Wicaksono",
-    whatsapp: "+62 822-4411-9870",
+    whatsapp: "6282244119870",
     lokasiGang: "Gg. IX No. 27",
     wilayah: "Jl. MT Haryono Gg. IX (Sentra Pembakaran Putar)",
     alamat: "Jl. MT Haryono Gg. IX No. 27, Dinoyo, Lowokwaru",
@@ -110,7 +110,7 @@ export const tokoSeed: Toko[] = [
     nib: "91200054712",
     keterangan: "Pesanan Arsitektural & Kafe",
     pemilik: "Nanik Indrayani",
-    whatsapp: "+62 813-8890-2134",
+    whatsapp: "6281388902134",
     lokasiGang: "Jl. MT Haryono 180",
     wilayah: "Koridor Jl. MT Haryono (Depan)",
     alamat: "Jl. MT Haryono No. 180, Dinoyo, Lowokwaru",
@@ -134,7 +134,7 @@ export const tokoSeed: Toko[] = [
     nib: "91200019022",
     keterangan: "Renovasi Workshop • Nonaktif Sementara",
     pemilik: "Djoko Susilo",
-    whatsapp: "+62 819-0331-5521",
+    whatsapp: "6281903315521",
     lokasiGang: "Gg. X No. 19",
     wilayah: "Gg. X (Gerabah Alami & Tungku)",
     alamat: "Gg. X No. 19, Dinoyo, Lowokwaru",
@@ -153,7 +153,14 @@ export const tokoSeed: Toko[] = [
   },
 ];
 
-/** Pengajuan toko baru yang tampil di panel verifikasi dashboard. */
+const JAM = 60 * 60 * 1000;
+/** Waktu pengajuan relatif terhadap saat seed dijalankan, agar timer 3×24 jam selalu bisa didemokan. */
+const jamLalu = (jam: number) => new Date(Date.now() - jam * JAM);
+
+/**
+ * Pengajuan toko baru yang tampil di panel verifikasi dashboard. Sengaja dibuat bervariasi:
+ * baru masuk, sisa ±2 hari, hampir habis (sisa 3 jam), dan sudah kedaluwarsa (lewat 72 jam).
+ */
 export const pengajuanSeed = [
   {
     slug: "gerabah-lestari-pak-man",
@@ -162,6 +169,7 @@ export const pengajuanSeed = [
     pengrajin: "Bpk. Suparman",
     keahlian: "Vas & Guci Putar",
     diajukan: "Diajukan 2 jam yang lalu",
+    diajukanPada: jamLalu(2),
     foto: "/images/verif-gerabah-lestari.jpg",
   },
   {
@@ -171,6 +179,29 @@ export const pengajuanSeed = [
     pengrajin: "Ibu Rini Handayani",
     keahlian: "Stoneware Glazing",
     diajukan: "Diajukan kemarin, 16:30",
+    diajukanPada: jamLalu(20),
     foto: "/images/verif-studio-tanah-sari.jpg",
+  },
+  {
+    slug: "kriya-tanah-liat-arjosari",
+    nama: "Kriya Tanah Liat Arjosari",
+    lokasiGang: "Gang 6 No. 03",
+    pengrajin: "Bpk. Hendro Wibowo",
+    keahlian: "Ukir Terakota",
+    diajukan: "Diajukan 3 hari yang lalu",
+    diajukanPada: jamLalu(69),
+    foto: "/images/toko-rumah-kriya.jpg",
+  },
+  {
+    slug: "keramik-cahaya-merjosari",
+    nama: "Keramik Cahaya Merjosari",
+    lokasiGang: "Gang 1 No. 21",
+    pengrajin: "Ibu Siti Aminah",
+    keahlian: "Suvenir Cetak",
+    diajukan: "Diajukan 4 hari yang lalu",
+    diajukanPada: jamLalu(98),
+    // Lewat 72 jam: seed langsung menandainya agar konsisten dengan aturan batas waktu.
+    status: "kedaluwarsa" as const,
+    foto: "/images/toko-suvenir-melati.jpg",
   },
 ];

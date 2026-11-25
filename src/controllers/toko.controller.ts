@@ -1,61 +1,74 @@
 import type { Request, Response } from "express";
-import { tokoService } from "../services/toko.service";
-import type { StatusToko, TokoInput } from "../types";
-import { HttpError } from "../utils/httpError";
-import { validateToko } from "../utils/validateToko";
+import { pickTokoFields } from "../auth/policy";
+import { currentUser } from "../middleware/authMiddleware";
+import { produkService } from "../services/produk.service";
+import { DEFAULT_TOKO, type MediaToko, type TokoFilter, tokoService } from "../services/toko.service";
+import type { TokoInput } from "../types";
+import { storage } from "../lib/storage";
+import { Readable } from "node:stream";
 
-const DEFAULT_TOKO: Omit<TokoInput, "nama" | "pemilik" | "tahunBerdiri" | "wilayah" | "whatsapp" | "jamBuka"> = {
-  nib: "-",
-  keterangan: "Pendaftar baru",
-  lokasiGang: "-",
-  alamat: "",
-  koordinat: "-7.9421, 112.6087",
-  spesialisasi: "Semi-Porselen",
-  kategori: [],
-  jumlahProduk: 0,
-  deskripsi: "",
-  status: "menunggu",
-  badge: "baru",
-  foto: "/images/sampul-galeri.jpg",
-  aktifPublik: false,
-  akreditasi: false,
-};
-
+/**
+ * Controller hanya membaca input yang sudah lolos `validate()` (req.validated),
+ * memanggil service, lalu membalas lewat `res.success()` agar format respons seragam.
+ * Fungsi async: error dari query MySQL otomatis diteruskan Express 5 ke errorHandler.
+ */
 export const tokoController = {
-  list(req: Request, res: Response) {
-    const { q, status, lokasi, kategori } = req.query as Record<string, string | undefined>;
-    const data = tokoService.findAll({ q, status: status as StatusToko | undefined, lokasi, kategori });
-    res.json({ data, ringkasan: tokoService.ringkasan() });
+  async list(req: Request, res: Response) {
+    const user = currentUser(req);
+    const filter = req.validated.query as TokoFilter;
+    const [data, ringkasan] = await Promise.all([tokoService.findAll(user, filter), tokoService.ringkasan(user)]);
+    res.success(data, { meta: { total: data.length, ringkasan } });
   },
 
-  detail(req: Request<{ slug: string }>, res: Response) {
-    res.json({ data: tokoService.findBySlug(req.params.slug) });
+  async detail(req: Request<{ slug: string }>, res: Response) {
+    res.success(await tokoService.findBySlug(currentUser(req), req.params.slug));
   },
 
-  create(req: Request, res: Response) {
-    const body = validateToko(req.body) as TokoInput;
-    const toko = tokoService.create({ ...DEFAULT_TOKO, ...body });
-    res.status(201).json({ data: toko, message: "Toko berhasil ditambahkan" });
+  async fotoKtp(req: Request<{ slug: string }>, res: Response) {
+    const pathname = await tokoService.findFotoKtp(req.params.slug);
+    if (!pathname) return res.sendStatus(404);
+    const result = await storage.readPrivate(pathname);
+    if (!result?.stream) return res.sendStatus(404);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Type", result.blob.contentType ?? "application/octet-stream");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    return new Promise<void>((resolve, reject) => {
+      Readable.fromWeb(result.stream as ReadableStream<Uint8Array>).pipe(res).on("finish", resolve).on("error", reject);
+    });
   },
 
-  update(req: Request<{ slug: string }>, res: Response) {
-    const body = validateToko(req.body, true);
-    const toko = tokoService.update(req.params.slug, body);
-    res.json({ data: toko, message: "Perubahan toko tersimpan" });
+  /** Rute bertingkat /toko/:slug/produk — produk milik satu toko. */
+  async produk(req: Request<{ slug: string }>, res: Response) {
+    const user = currentUser(req);
+    const toko = await tokoService.findBySlug(user, req.params.slug);
+    const data = await produkService.findAll(user, { tokoSlug: toko.slug });
+    res.success(data, { meta: { total: data.length, toko: { slug: toko.slug, nama: toko.nama } } });
   },
 
-  remove(req: Request<{ slug: string }>, res: Response) {
-    tokoService.remove(req.params.slug);
-    res.json({ message: "Toko berhasil dihapus" });
+  async create(req: Request, res: Response) {
+    const user = currentUser(req);
+    const body = pickTokoFields(user, req.validated.body) as TokoInput;
+    const toko = await tokoService.create(user, { ...DEFAULT_TOKO, ...body });
+    res.location(`/api/toko/${toko.slug}`);
+    res.success(toko, { status: 201, message: "Toko berhasil ditambahkan" });
   },
 
-  putuskan(req: Request<{ slug: string }>, res: Response) {
-    const { keputusan } = req.body as { keputusan?: string };
-    if (keputusan !== "verifikasi" && keputusan !== "tolak") {
-      throw new HttpError(422, "Keputusan harus 'verifikasi' atau 'tolak'");
-    }
-    const hasil = tokoService.putuskanPengajuan(req.params.slug, keputusan);
-    const pesan = keputusan === "verifikasi" ? "Toko berhasil diverifikasi" : "Pengajuan toko ditolak";
-    res.json({ data: hasil, message: pesan });
+  async update(req: Request<{ slug: string }>, res: Response) {
+    const user = currentUser(req);
+    const toko = await tokoService.update(user, req.params.slug, pickTokoFields(user, req.validated.body));
+    res.success(toko, { message: "Perubahan toko tersimpan" });
+  },
+
+  /** Handler unggah per jenis media. `req.file` sudah dijamin ada & valid oleh middleware `imageUpload`. */
+  uploadMedia(jenis: MediaToko) {
+    return async (req: Request<{ slug: string }>, res: Response) => {
+      const toko = await tokoService.updateMedia(currentUser(req), req.params.slug, jenis, req.file!);
+      res.success(toko, { message: jenis === "foto" ? "Foto sampul toko berhasil diunggah" : "Stempel toko berhasil diunggah" });
+    };
+  },
+
+  async remove(req: Request<{ slug: string }>, res: Response) {
+    await tokoService.remove(currentUser(req), req.params.slug);
+    res.success(null, { message: "Toko berhasil dihapus" });
   },
 };

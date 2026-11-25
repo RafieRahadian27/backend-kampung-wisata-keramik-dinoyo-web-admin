@@ -1,0 +1,316 @@
+// ─────────────────────────────────────────────────────────────
+// Skema database Panel Admin Kampung Wisata Keramik Dinoyo (Prisma ORM).
+//
+// File ini adalah SATU-SATUNYA sumber kebenaran struktur database:
+//   1. ubah model di sini
+//   2. `npm run db:migrate -- --name <nama_perubahan>` → Prisma membandingkan skema dengan
+//      database, menulis file SQL baru di prisma/migrations/, lalu menjalankannya
+//   3. Prisma Client (src/generated/prisma) ikut dibuat ulang sehingga tipe TypeScript
+//      selalu sama dengan struktur tabel
+//
+// Konvensi: nama model/field camelCase di kode, nama tabel/kolom snake_case di MySQL
+// (dipetakan dengan @map / @@map). Nama index & foreign key disamakan dengan
+// database/schema.sql lama agar database yang sudah ada bisa di-baseline (lihat README).
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+// URL koneksi untuk Prisma CLI (migrate, studio) diatur di prisma.config.ts.
+// Saat aplikasi berjalan, koneksi dibuat lewat driver adapter di src/lib/prisma.ts.
+datasource db {
+  provider = "mysql"
+}
+
+enum Role {
+  admin
+  pengrajin
+}
+
+/// Nilai ENUM di MySQL memakai spasi, jadi dipetakan ke identifier yang sah di TypeScript.
+enum PeranAkun {
+  PemilikToko   @map("Pemilik Toko")
+  StafPengrajin @map("Staf Pengrajin")
+}
+
+enum StatusAkun {
+  aktif
+  menunggu
+  ditangguhkan
+}
+
+enum StatusToko {
+  terverifikasi
+  menunggu
+  nonaktif
+}
+
+enum BadgeToko {
+  baru
+  unggulan
+  maestro
+}
+
+enum StatusProduk {
+  tersedia
+  habis
+  preorder
+}
+
+/// Akun pengrajin yang dikelola admin (status aktif/menunggu/ditangguhkan).
+model Akun {
+  id            Int        @id @default(autoincrement()) @db.UnsignedInt
+  nama          String     @db.VarChar(100)
+  umur          Int?       @db.UnsignedTinyInt
+  inisial       String     @db.VarChar(4)
+  nik           String     @unique(map: "nik") @db.Char(16)
+  fotoKtp       String?    @map("foto_ktp") @db.VarChar(255)
+  email         String     @unique(map: "email") @db.VarChar(120)
+  toko          String     @db.VarChar(100)
+  lokasi        String     @db.VarChar(100)
+  peran         PeranAkun
+  whatsapp      String     @db.VarChar(25)
+  status        StatusAkun @default(menunggu)
+  terakhirAktif String     @default("Belum pernah login") @map("terakhir_aktif") @db.VarChar(50)
+  tone          String     @default("neutral") @db.VarChar(12)
+
+  users User[]
+
+  @@index([status], map: "idx_akun_status")
+  @@map("akun")
+}
+
+/// Pengguna yang bisa login. Hanya hash kata sandi yang disimpan.
+model User {
+  id           Int       @id @default(autoincrement()) @db.UnsignedInt
+  nama         String    @db.VarChar(100)
+  sapaan       String    @db.VarChar(100)
+  email        String    @unique(map: "email") @db.VarChar(120)
+  username     String    @unique(map: "username") @db.VarChar(40)
+  passwordHash String    @map("password_hash") @db.VarChar(200)
+  role         Role
+  akunId       Int?      @map("akun_id") @db.UnsignedInt
+  avatar       String?   @db.VarChar(255)
+  /// Ditambahkan oleh migrasi 20261104000100_login_tracking.
+  lastLoginAt  DateTime? @map("last_login_at") @db.DateTime(0)
+
+  akun     Akun?      @relation(fields: [akunId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_users_akun")
+  toko     UserToko[]
+  sessions Session[]
+  audit    AuditLog[]
+  gambar   Gambar[]
+
+  @@index([akunId], map: "fk_users_akun")
+  @@map("users")
+}
+
+model Toko {
+  id           Int        @id @default(autoincrement()) @db.UnsignedInt
+  slug         String     @unique(map: "slug") @db.VarChar(80)
+  nama         String     @db.VarChar(60)
+  nib          String     @default("-") @db.VarChar(20)
+  keterangan   String     @default("") @db.VarChar(120)
+  pemilik      String     @db.VarChar(100)
+  nik          String?    @db.Char(16)
+  fotoKtp      String?    @map("foto_ktp") @db.VarChar(255)
+  whatsapp     String     @db.VarChar(25)
+  lokasiGang   String     @default("-") @map("lokasi_gang") @db.VarChar(60)
+  wilayah      String     @db.VarChar(120)
+  alamat       String     @default("") @db.VarChar(200)
+  koordinat    String     @default("") @db.VarChar(40)
+  spesialisasi String     @db.VarChar(60)
+  jumlahProduk Int        @default(0) @map("jumlah_produk") @db.UnsignedInt
+  tahunBerdiri Int        @map("tahun_berdiri") @db.UnsignedSmallInt
+  deskripsi    String     @db.Text
+  jamBuka      String     @map("jam_buka") @db.VarChar(80)
+  status       StatusToko @default(menunggu)
+  badge        BadgeToko?
+  foto         String     @db.VarChar(200)
+  /// URL Vercel Blob stempel otentikasi kriya (1:1). Ditambahkan oleh migrasi 20261104000200_toko_stempel.
+  stempel      String?    @db.VarChar(200)
+  aktifPublik  Boolean    @default(false) @map("aktif_publik")
+  akreditasi   Boolean    @default(false)
+  diperbarui   DateTime   @default(now()) @db.DateTime(0)
+
+  kategori TokoKategori[]
+  /// Pengguna yang memiliki toko ini (dasar ABAC).
+  pengguna UserToko[]
+  produk   Produk[]
+  gambar   Gambar[]
+
+  @@index([status], map: "idx_toko_status")
+  @@index([diperbarui], map: "idx_toko_diperbarui")
+  @@map("toko")
+}
+
+/// Relasi one-to-many: satu toko punya banyak kategori spesialisasi (urutan dipertahankan).
+model TokoKategori {
+  tokoId   Int    @map("toko_id") @db.UnsignedInt
+  kategori String @db.VarChar(60)
+  urutan   Int    @default(0) @db.UnsignedTinyInt
+
+  toko Toko @relation(fields: [tokoId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_kategori_toko")
+
+  @@id([tokoId, kategori])
+  @@map("toko_kategori")
+}
+
+/// Kepemilikan toko (many-to-many users ↔ toko): pengrajin hanya mengakses toko miliknya.
+model UserToko {
+  userId Int @map("user_id") @db.UnsignedInt
+  tokoId Int @map("toko_id") @db.UnsignedInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_ut_user")
+  toko Toko @relation(fields: [tokoId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_ut_toko")
+
+  @@id([userId, tokoId])
+  @@index([tokoId], map: "fk_ut_toko")
+  @@map("user_toko")
+}
+
+model KategoriProduk {
+  nama   String @id @db.VarChar(60)
+  urutan Int    @default(0) @db.UnsignedTinyInt
+
+  produk Produk[]
+
+  @@map("kategori_produk")
+}
+
+model Produk {
+  id           Int          @id @default(autoincrement()) @db.UnsignedInt
+  nama         String       @db.VarChar(120)
+  sku          String       @unique(map: "sku") @db.VarChar(30)
+  tokoId       Int          @map("toko_id") @db.UnsignedInt
+  tokoLabel    String       @map("toko_label") @db.VarChar(100)
+  tokoInisial  String       @map("toko_inisial") @db.VarChar(4)
+  pengrajin    String       @db.VarChar(100)
+  teknik       String       @db.VarChar(80)
+  foto         String       @db.VarChar(200)
+  badge        String?      @db.VarChar(40)
+  kategori     String       @db.VarChar(60)
+  bahan        String       @db.VarChar(80)
+  harga        Int          @db.UnsignedInt
+  catatanHarga String       @default("") @map("catatan_harga") @db.VarChar(80)
+  status       StatusProduk @default(tersedia)
+  aktifPublik  Boolean      @default(true) @map("aktif_publik")
+  stokLabel    String       @map("stok_label") @db.VarChar(60)
+  lokasiStok   String       @map("lokasi_stok") @db.VarChar(80)
+
+  toko           Toko           @relation(fields: [tokoId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_produk_toko")
+  kategoriProduk KategoriProduk @relation(fields: [kategori], references: [nama], onDelete: Restrict, onUpdate: Cascade, map: "fk_produk_kategori")
+  gambar         Gambar[]
+
+  @@index([tokoId], map: "fk_produk_toko")
+  @@index([kategori], map: "fk_produk_kategori")
+  @@map("produk")
+}
+
+/// Pengajuan pendaftaran toko baru (panel verifikasi dashboard).
+model Pengajuan {
+  id           Int             @id @default(autoincrement()) @db.UnsignedInt
+  slug         String          @unique(map: "slug") @db.VarChar(80)
+  nama         String          @db.VarChar(60)
+  lokasiGang   String          @map("lokasi_gang") @db.VarChar(60)
+  pengrajin    String          @db.VarChar(100)
+  nik          String?         @db.Char(16)
+  fotoKtp      String?         @map("foto_ktp") @db.VarChar(255)
+  whatsapp     String?         @db.VarChar(25)
+  keahlian     String          @db.VarChar(80)
+  /// Label lama ("Diajukan 2 jam yang lalu"). Tampilan kini dihitung dari `diajukanPada`.
+  diajukan     String          @db.VarChar(60)
+  foto         String          @db.VarChar(200)
+  /// Waktu pengajuan masuk — awal hitung mundur batas verifikasi 3×24 jam (migrasi 20261118000000).
+  diajukanPada DateTime        @default(now()) @map("diajukan_pada") @db.DateTime(0)
+  /// `kedaluwarsa` = lewat batas tanpa keputusan admin → tidak bisa diverifikasi lagi.
+  status       StatusPengajuan @default(menunggu)
+  koreksiAlasan String?        @map("koreksi_alasan") @db.VarChar(500)
+
+  @@index([status, diajukanPada], map: "idx_pengajuan_status")
+  @@map("pengajuan")
+}
+
+enum StatusPengajuan {
+  menunggu
+  kedaluwarsa
+}
+
+enum JenisGambar {
+  toko_foto
+  toko_stempel
+  produk_foto
+}
+
+/// Catatan setiap berkas gambar di Vercel Blob (migrasi 20261118000000).
+/// Berkasnya tetap di Blob; tabel ini menyimpan metadata + pemiliknya, sehingga database tahu
+/// berkas mana yang dipakai toko/produk mana, ukurannya, dan siapa yang mengunggah.
+/// Baris ikut terhapus (CASCADE) bila toko/produknya dihapus; berkas Blob-nya dihapus service.
+model Gambar {
+  id           Int         @id @default(autoincrement()) @db.UnsignedInt
+  url          String      @unique(map: "uq_gambar_url") @db.VarChar(255)
+  pathname     String      @db.VarChar(255)
+  contentType  String      @map("content_type") @db.VarChar(40)
+  ukuran       Int         @db.UnsignedInt
+  jenis        JenisGambar
+  tokoId       Int?        @map("toko_id") @db.UnsignedInt
+  produkId     Int?        @map("produk_id") @db.UnsignedInt
+  diunggahOleh Int?        @map("diunggah_oleh") @db.UnsignedInt
+  dibuat       DateTime    @default(now()) @db.DateTime(0)
+
+  toko       Toko?   @relation(fields: [tokoId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_gambar_toko")
+  produk     Produk? @relation(fields: [produkId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_gambar_produk")
+  pengunggah User?   @relation(fields: [diunggahOleh], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_gambar_user")
+
+  @@index([tokoId], map: "fk_gambar_toko")
+  @@index([produkId], map: "fk_gambar_produk")
+  @@index([diunggahOleh], map: "fk_gambar_user")
+  @@map("gambar")
+}
+
+/// Sesi login. Yang disimpan hanya SHA-256 dari token (bukan token aslinya).
+model Session {
+  tokenHash String   @id @map("token_hash") @db.Char(64)
+  userId    Int      @map("user_id") @db.UnsignedInt
+  createdAt DateTime @map("created_at") @db.DateTime(0)
+  expiresAt DateTime @map("expires_at") @db.DateTime(0)
+  /// Ditambahkan oleh migrasi 20261104000100_login_tracking — membantu menelusuri sesi mencurigakan.
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
+  userAgent String?  @map("user_agent") @db.VarChar(255)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_sessions_user")
+
+  @@index([userId], map: "idx_sessions_user")
+  @@index([expiresAt], map: "idx_sessions_expires")
+  @@map("sessions")
+}
+
+/// Single-use private KTP uploads; only token hash and private pathname persist.
+model KtpUploadToken {
+  tokenHash String   @id @map("token_hash") @db.Char(64)
+  pathname  String   @db.VarChar(255)
+  expiresAt DateTime @map("expires_at") @db.DateTime(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  @@index([expiresAt], map: "idx_ktp_upload_expires")
+  @@map("ktp_upload_tokens")
+}
+
+
+/// Jejak audit; selalu ditulis di dalam transaksi yang sama dengan perubahan datanya.
+model AuditLog {
+  id        BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  userId    Int?     @map("user_id") @db.UnsignedInt
+  aksi      String   @db.VarChar(40)
+  target    String   @db.VarChar(120)
+  detail    String   @default("") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_audit_user")
+
+  @@index([aksi, createdAt], map: "idx_audit_aksi")
+  @@index([userId], map: "fk_audit_user")
+  @@map("audit_log")
+}

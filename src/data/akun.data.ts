@@ -1,18 +1,4 @@
-import type { AdminUser, Akun } from "../types";
-
-export const adminUser: AdminUser = {
-  nama: "Admin Dinoyo",
-  sapaan: "Pak Joko Santoso",
-  email: "admin@keramikdinoyo.id",
-  peran: "Admin Paguyuban",
-};
-
-/** Kredensial demo untuk login (tanpa database). */
-export const demoCredentials = {
-  email: adminUser.email,
-  username: "admin",
-  password: "dinoyo123",
-};
+import type { Akun } from "../types";
 
 export const akunSeed: Akun[] = [
   {

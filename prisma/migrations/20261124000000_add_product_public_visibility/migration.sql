@@ -1,0 +1,1 @@
+ALTER TABLE `produk` ADD COLUMN `aktif_publik` BOOLEAN NOT NULL DEFAULT true;

@@ -1,0 +1,10 @@
+{
+  // Kompilasi `npm run build`: hanya kode aplikasi di src/ → dist/.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"]
+}

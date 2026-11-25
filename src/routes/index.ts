@@ -1,34 +1,52 @@
 import { Router } from "express";
-import { akunController } from "../controllers/akun.controller";
-import { authController } from "../controllers/auth.controller";
-import { produkController } from "../controllers/produk.controller";
-import { reportController } from "../controllers/report.controller";
-import { tokoController } from "../controllers/toko.controller";
-import { cacheControl } from "../middleware/cacheControl";
+import { HttpError } from "../utils/httpError";
+import akunRoutes from "./akun.routes";
+import authRoutes from "./auth.routes";
+import gambarRoutes from "./gambar.routes";
+import pengajuanRoutes from "./pengajuan.routes";
+import { berandaRouter, laporanTokoRouter } from "./pengrajin.routes";
+import produkRoutes from "./produk.routes";
+import { dashboardRouter, laporanRouter } from "./report.routes";
+import systemRoutes from "./system.routes";
+import tokoRoutes from "./toko.routes";
+import vitalsRoutes from "./vitals.routes";
+import analyticsRoutes from "./analytics.routes";
+import publicRoutes from "./public.routes";
 
+/**
+ * Routing modular: setiap fitur punya file router sendiri (express.Router())
+ * lalu digabung di sini dengan prefiks path. File ini hanya "peta" API.
+ *
+ * Setiap modul memasang middleware-nya sendiri (router-level), mis. `authenticate`,
+ * sehingga rute publik (/health, /auth/login) tidak perlu pengecualian khusus.
+ */
 const router = Router();
 
-router.get("/health", (_req, res) => {
-  res.json({ status: "ok", waktu: new Date().toISOString() });
+router.use("/health", systemRoutes);
+router.use("/public", publicRoutes);
+router.use("/auth", authRoutes);
+router.use("/dashboard", dashboardRouter);
+router.use("/laporan", laporanRouter);
+router.use("/beranda", berandaRouter);
+router.use("/laporan-toko", laporanTokoRouter);
+router.use("/toko", tokoRoutes);
+router.use("/pengajuan", pengajuanRoutes);
+router.use("/produk", produkRoutes);
+router.use("/akun", akunRoutes);
+router.use("/vitals", vitalsRoutes);
+router.use("/gambar", gambarRoutes);
+router.use("/analytics", analyticsRoutes);
+
+/**
+ * Wildcard `/*splat` menangkap semua sisa path di bawah /api yang tidak cocok dengan rute mana pun.
+ * `req.params.splat` berisi array segmen, mis. /api/a/b/c → ["a", "b", "c"].
+ */
+router.all("/*splat", (req) => {
+  const segmen = (req.params as { splat: string[] }).splat;
+  throw new HttpError(404, `Endpoint ${req.method} ${req.originalUrl} tidak ditemukan`, {
+    code: "ROUTE_NOT_FOUND",
+    details: { segmen },
+  });
 });
-
-router.post("/auth/login", authController.login);
-router.post("/auth/logout", authController.logout);
-
-router.get("/dashboard", cacheControl(30), reportController.dashboard);
-router.get("/laporan", cacheControl(60), reportController.laporan);
-
-router.get("/toko", cacheControl(30), tokoController.list);
-router.post("/toko", tokoController.create);
-router.get("/toko/:slug", cacheControl(30), tokoController.detail);
-router.put("/toko/:slug", tokoController.update);
-router.delete("/toko/:slug", tokoController.remove);
-router.patch("/pengajuan/:slug", tokoController.putuskan);
-
-router.get("/produk", cacheControl(30), produkController.list);
-router.delete("/produk/:id", produkController.remove);
-
-router.get("/akun", cacheControl(30), akunController.list);
-router.patch("/akun/:id/status", akunController.updateStatus);
 
 export default router;
